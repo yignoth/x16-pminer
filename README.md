@@ -1,2 +1,2 @@
 # x16-pminer
-COmmander X16 Planet Miner Demo
+Commander X16 Planet Miner Demo
