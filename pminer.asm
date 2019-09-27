@@ -9,7 +9,7 @@ hScrollPos			.byte		?
 .send section_ZP
 
 .section section_BSS
-oldISR:		.word		?
+oldISR		.word		?
 mapChar		.byte		?
 .send section_BSS
 
@@ -69,20 +69,34 @@ initGame:
 		#Vera.setScreenRes 320,240
 
 		; setup layer 0: mode=0/e=1, map=32x32, map=$0000, tile=font0, h/v-scroll=0
-		#Vera.layerSetup 0, $01, $00, L0_MAP_BASE, Vera.FONT_UPETSCII, $0000, $0000
-		; setup layer 1: mode=0/e=1, map=64x32, map=$4000, tile=font0, h/v-scroll=0
-		#Vera.layerSetup 1, $01, $01, L1_MAP_BASE, Vera.FONT_UPETSCII, $0000, $0000
+		#Vera.layerSetup 0, %00000001, $00, L0_MAP_BASE, Vera.FONT_UPETSCII, $0000, $0000
+		; setup layer 1: mode=3/e=1, map=64x32, map=$4000, tile=font0, h/v-scroll=0
+		#Vera.layerSetup 1, %01100001, $01, L1_MAP_BASE, Vera.FONT_LPETSCII, $0000, $0000
 
+		; copy the palette data over to VERA
+		#Vera.copyDataToVera palette, Vera.PALETTE, 512
+		; copy the 'font' data into low PETSCII location only copying 64 characters
+		#Vera.copyDataToVera font, Vera.FONT_LPETSCII, 16*4*8
 
 		; fill window: mapBase, numMapCols, c, r, w, h, chr, clr
-		#Vera.fillWindow L0_MAP_BASE, 32, 0, 0, 32, 32, $2e, $04
-		#Vera.fillWindow L1_MAP_BASE, 64, 1, 1, 28, 28, $20, $00
-		#Vera.fillWindow L1_MAP_BASE, 64, 0, 0, 40, 1, $40, HUD_OUT_CLR
-		#Vera.fillWindow L1_MAP_BASE, 64, 0, 29, 40, 1, $40, HUD_OUT_CLR
-		#Vera.fillWindow L1_MAP_BASE, 64, 0, 0, 1, 30, $42, HUD_OUT_CLR
-		#Vera.fillWindow L1_MAP_BASE, 64, 29, 0, 1, 30, $42, HUD_OUT_CLR
-		#Vera.fillWindow L1_MAP_BASE, 64, 39, 0, 1, 30, $42, HUD_OUT_CLR
-		#Vera.fillWindow L1_MAP_BASE, 64, 30, 1, 9, 28, $20, HUD_TXT_CLR
+		#Vera.fillWindow L0_MAP_BASE, 32, 0, 0, 32, 32, $2e, $04		; fill layer0 with dots
+		#Vera.fillWindow L1_MAP_BASE, 64, 1, 1, 28, 28, 0, 0			; HUD clear viewport to see layer0
+		#Vera.fillWindow L1_MAP_BASE, 64, 0, 0, 40, 1, 3, 0				; HUD top H line
+		#Vera.fillWindow L1_MAP_BASE, 64, 0, 29, 40, 1, 3, 0			; HUD bottom H line
+		#Vera.fillWindow L1_MAP_BASE, 64, 0, 0, 1, 30, 4, 0				; HUD left V line
+		#Vera.fillWindow L1_MAP_BASE, 64, 29, 0, 1, 30, 4, 0			; HUD mid V line
+		#Vera.fillWindow L1_MAP_BASE, 64, 39, 0, 1, 30, 4, 0			; HUD right V line
+		#Vera.fillWindow L1_MAP_BASE, 64, 30, 1, 9, 9, 1, 0				; HUD smallmap text area fill
+		#Vera.fillWindow L1_MAP_BASE, 64, 29, 9, 11, 1, 3, 0			; HUD smallmap separator
+		#Vera.fillChar L1_MAP_BASE, 64, 0, 0, 5, 0						; HUD top left corner
+		#Vera.fillChar L1_MAP_BASE, 64, 29, 0, 9, 0						; HUD top mid T
+		#Vera.fillChar L1_MAP_BASE, 64, 39, 0, 6, 0						; HUD top right corner
+		#Vera.fillChar L1_MAP_BASE, 64, 0, 29, 7, 0						; HUD bot left corner
+		#Vera.fillChar L1_MAP_BASE, 64, 29, 29, 10, 0					; HUD bot mid T
+		#Vera.fillChar L1_MAP_BASE, 64, 39, 29, 8, 0					; HUD bot right corner
+		#Vera.fillChar L1_MAP_BASE, 64, 29, 9, 11, 0					; HUD smallmap left T
+		#Vera.fillChar L1_MAP_BASE, 64, 39, 9, 12, 0					; HUD smallmap right T
+		#Vera.fillWindow L1_MAP_BASE, 64, 30, 10, 9, 19, 2, 0			; HUD right text area fill
 		rts
 
 myIsr:
@@ -110,7 +124,7 @@ myIsr:
 		#bpoke 1, Vera.cw_row
 		#bpoke 1, Vera.cw_width
 		#bpoke 28, Vera.cw_height
-		#bpoke 1, Vera.cw_color
+		#bpoke 2, Vera.cw_color
 		#bpoke (32 - 1)<<1, Vera.cw_winc
 
 		; column pos
@@ -136,6 +150,11 @@ isr_done:
 		rti
 		;jmp oldISR				; jump to old ISR
 
+palette:
+.binary "res/palette.bin"
+font:
+.binary "res/font-hud.bin"
+
 ;#include "debug.asm"
 .send section_CODE
 
@@ -144,4 +163,6 @@ isr_done:
 ;
 .include "vera.asm"
 .include "memmap.asm"
+
+
 

@@ -73,6 +73,8 @@ IO_VERA .dstruct S_IO
 .send section_IO_VERA
 
 .section section_ZP
+	z0			.word	?
+	z1			.word	?
 .send section_ZP
 
 .section section_BSS
@@ -169,7 +171,6 @@ setData0:	.macro
 		sta Vera.IO_VERA.data0
 .endm
 
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Fills a window with a character and color
 ; veraFillWindow V, X, Y, W, H, F, C
@@ -205,8 +206,66 @@ fillWindow: .macro
 			jsr Vera.AddCwRowColToVAddr256
 		.fi
 		jsr Vera.FillWindow
-		.endm
+.endm
 
+; Fills a single character on the screen
+; fillCHar V, X, Y, F, C
+;	V = the baseMap VAddr address
+;	MC= the number of map columns
+;	X = the left column of the window
+;	Y = the top row of the window
+;	F = the fill character
+;	C = the fill color
+fillChar: .macro
+		#vaddr 1, \1
+		#bpoke \3, Vera.cw_col
+		#bpoke \4, Vera.cw_row
+		#bpoke \5, Vera.cw_char
+		#bpoke \6, Vera.cw_color
+
+		.if \2 == 32
+			jsr Vera.AddCwRowColToVAddr32
+		.elsif \2 == 64
+			jsr Vera.AddCwRowColToVAddr64
+		.elsif \2 == 128
+			jsr Vera.AddCwRowColToVAddr128
+		.elsif \2 == 256
+			jsr Vera.AddCwRowColToVAddr256
+		.fi
+		jsr Vera.FillChar
+.endm
+
+; \1 = CPU RAM data source location
+; \2 = VERA RAM destination location
+; \3 = number of bytes (DO NOT CALL WITH 0)
+copyDataToVera: .macro
+		#vaddr 1, \2		; set VERA address
+
+		lda #<\1			; copy source address to z0
+		sta Vera.z0
+		lda #>\1
+		sta Vera.z0+1
+
+		lda #>\3
+		sta Vera.z1			; store \3(hi) in z1
+		ldx #<\3			; load \3(lo) into x
+		beq +				; if zero then jump to decreasing \3(hi)
+
+-		ldy #$00			; start y at 0 since VERA address increase goes by 1
+-		lda (Vera.z0),y		; load A with source + y
+		sta Vera.IO_VERA.data0		; store in data0
+		iny
+		dex
+		bne -						; continue if more bytes to xfer
+
+		inc Vera.z0+1		; increment src(hi) by 1
+
++		lda Vera.z1			; load A with \3(hi)
+		beq +				; if zero then we are done
+		dec Vera.z1			; decrease \3(hi)
+		bra	--				; goto -
++
+.endm
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Subroutines
@@ -227,7 +286,7 @@ cw_rinc			.byte	0
 ;
 ; Req: 
 ;		cw_col, cw_row = row/col of start of fill
-;		cw_width, cw_hjeight = widht/height of fill window
+;		cw_width, cw_height = widht/height of fill window
 ;		cw_char, cw_color = color and character to fill
 ;		cw_winc, num bytes from end on window to start of next row/col.
 ;
@@ -247,12 +306,26 @@ FillWindow:
 +		rts
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;
+; FillChar: Fills a single character on the current screen starting at current
+; screen position.
+;
+; Req: 
+;		cw_col, cw_row = row/col of start of fill
+;		cw_char, cw_color = color and character to fill
+;
+; Uses: A, X, Y
+FillChar:
+		#setData0 cw_char					; store char
+		#setData0 cw_color					; store color
+		rts
+
+;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Computes screen starting address for window with default INC=1
 ;
 ; cw_col, cw_row = starting row, 
 ;
 ; Uses: A, Y
-AddCwRowColToVAddr32:		; map width of 32
+AddCwRowColToVAddr32:		; map width of 32 (64 bytes row increment)
 		lda cw_row
 		asl
 		asl
@@ -277,7 +350,7 @@ AddCwRowColToVAddr32:		; map width of 32
 		inc Vera.IO_VERA.addrH
 +		jmp AddCwColToVAddr
 
-AddCwRowColToVAddr64:		; map width of 64
+AddCwRowColToVAddr64:		; map width of 64 (128 bytes row increment)
 		lda cw_row
 		lsr
 		bcc ++
@@ -298,7 +371,7 @@ AddCwRowColToVAddr64:		; map width of 64
 		inc Vera.IO_VERA.addrH
 +		jmp AddCwColToVAddr
 
-AddCwRowColToVAddr128:		; map width of 128
+AddCwRowColToVAddr128:		; map width of 128 (256 byte row increment)
 		lda cw_row
 		clc
 		adc Vera.IO_VERA.addrM
@@ -307,7 +380,7 @@ AddCwRowColToVAddr128:		; map width of 128
 		inc Vera.IO_VERA.addrH
 +		jmp AddCwColToVAddr
 
-AddCwRowColToVAddr256:		; map width of 256
+AddCwRowColToVAddr256:		; map width of 256 (512 byte row increment)
 		lda cw_row
 		clc
 		adc Vera.IO_VERA.addrM
