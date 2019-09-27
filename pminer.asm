@@ -2,6 +2,13 @@
 ; Prints Hello World to a bitmap screen
 ;
 
+; TODO
+; $FFE4 = get keyboard input:
+;	- jsr $ffe4
+;	  cmp #0
+;	  beq -
+
+
 .section section_ZP
 hScrollDelay		.byte		?
 hScrollOff			.byte		?
@@ -11,6 +18,7 @@ hScrollPos			.byte		?
 .section section_BSS
 oldISR		.word		?
 mapChar		.byte		?
+rndIdx		.byte		?
 .send section_BSS
 
 .section section_CODE
@@ -49,6 +57,7 @@ init:
 		lda #$00				; init hscroll value
 		sta hScrollOff
 		sta mapChar
+		sta rndIdx
 		lda #30
 		sta hScrollPos
 		lda #HSCROLL_DELAY_RESET		; scroll delay
@@ -69,17 +78,17 @@ initGame:
 		#Vera.setScreenRes 320,240
 
 		; setup layer 0: mode=0/e=1, map=32x32, map=$0000, tile=font0, h/v-scroll=0
-		#Vera.layerSetup 0, %00000001, $00, L0_MAP_BASE, Vera.FONT_UPETSCII, $0000, $0000
+		#Vera.layerSetup 0, %01100001, $00, L0_MAP_BASE, Vera.FONT_LPETSCII, $0000, $0000
 		; setup layer 1: mode=3/e=1, map=64x32, map=$4000, tile=font0, h/v-scroll=0
 		#Vera.layerSetup 1, %01100001, $01, L1_MAP_BASE, Vera.FONT_LPETSCII, $0000, $0000
 
 		; copy the palette data over to VERA
 		#Vera.copyDataToVera palette, Vera.PALETTE, 512
 		; copy the 'font' data into low PETSCII location only copying 64 characters
-		#Vera.copyDataToVera font, Vera.FONT_LPETSCII, 16*4*8
+		#Vera.copyDataToVera font, Vera.FONT_LPETSCII, 64*4*8
 
 		; fill window: mapBase, numMapCols, c, r, w, h, chr, clr
-		#Vera.fillWindow L0_MAP_BASE, 32, 0, 0, 32, 32, $2e, $04		; fill layer0 with dots
+		#Vera.fillWindow L0_MAP_BASE, 32, 0, 0, 32, 32, $20, $10		; fill layer0 with dots
 		#Vera.fillWindow L1_MAP_BASE, 64, 1, 1, 28, 28, 0, 0			; HUD clear viewport to see layer0
 		#Vera.fillWindow L1_MAP_BASE, 64, 0, 0, 40, 1, 3, 0				; HUD top H line
 		#Vera.fillWindow L1_MAP_BASE, 64, 0, 29, 40, 1, 3, 0			; HUD bottom H line
@@ -119,29 +128,45 @@ myIsr:
 +		sta hScrollOff
 		bne isr_done
 
-		; setup for FillWindow routine
-		#vaddr 1, L0_MAP_BASE
+		; clear next column with FillWindow
 		#bpoke 1, Vera.cw_row
 		#bpoke 1, Vera.cw_width
 		#bpoke 28, Vera.cw_height
-		#bpoke 2, Vera.cw_color
+		#bpoke $20, Vera.cw_char				; clear/blank char
+		#bpoke $10, Vera.cw_color
 		#bpoke (32 - 1)<<1, Vera.cw_winc
 
-		; column pos
-		lda hScrollPos
+		lda hScrollPos							; set column to current hscroll col
 		sta Vera.cw_col
+
+		#vaddr 1, L0_MAP_BASE					; fill with blanks
+		jsr Vera.AddCwRowColToVAddr32
+		jsr Vera.FillWindow
+
+		; fill next column with terrain
+		#bpoke $21, Vera.cw_char				; change to terrain character
+
+		inc rndIdx								; inc random table index
+		ldx rndIdx
+		lda rndTable,x						; get random table value
+		and #$0f
+		sta Vera.cw_height
+		eor #$ff								; make negative
+		clc
+		adc #30									; add 28+1+1 (+1 neg +1 starting row) (height of column)
+		sta Vera.cw_row
+
+	#bpoke $10, Vera.cw_color
+
+		#vaddr 1, L0_MAP_BASE
+		jsr Vera.AddCwRowColToVAddr32			; draw terrain
+		jsr Vera.FillWindow
+
+		; increase HScroll column position
+		lda hScrollPos
 		ina
 		and #$1f
 		sta hScrollPos
-
-		; fill with mapChar
-		lda mapChar
-		sta Vera.cw_char
-		inc mapChar
-
-		; do fill
-		jsr Vera.AddCwRowColToVAddr32
-		jsr Vera.FillWindow
 
 isr_done:
 		ply
@@ -154,6 +179,14 @@ palette:
 .binary "res/palette.bin"
 font:
 .binary "res/font-hud.bin"
+rndTable:
+	.byte		2,2,2,2,5,3,6,9,10,5,1,7,5,7,4,1,7,4,10,10,5,6,1,8,6,4,10,8,1,1,8,4,3,5,6,3,1,5
+	.byte		6,7,1,2,1,4,7,7,7,7,10,9,5,5,3,5,2,8,3,5,4,5,10,6,9,10,5,9,8,7,7,2,9,10,1,3,7,10
+	.byte		8,4,3,1,1,1,8,7,7,2,3,2,3,7,4,1,9,4,8,10,2,3,10,8,1,1,8,1,9,8,8,7,2,6,6,1,6,10,1
+	.byte		6,9,3,9,4,3,8,2,10,7,9,4,9,8,10,7,7,10,8,2,10,1,10,5,1,10,7,2,5,6,9,3,2,10,6,1,10
+	.byte		8,7,2,7,1,5,5,9,5,4,6,2,2,3,2,5,5,5,6,10,9,9,10,5,3,7,1,2,8,3,7,8,2,9,2,2,7,10,1,2
+	.byte		6,8,8,6,1,2,1,8,1,3,3,10,9,2,2,9,10,2,9,10,3,6,10,4,8,4,8,9,7,3,7,4,3,9,6,9,8,4,8
+	.byte		10,8,9,8,1,3,3,2,3,9,5,9,6,4,2,3,5,7,3,4,1,6,10,8,2
 
 ;#include "debug.asm"
 .send section_CODE
@@ -163,6 +196,3 @@ font:
 ;
 .include "vera.asm"
 .include "memmap.asm"
-
-
-
