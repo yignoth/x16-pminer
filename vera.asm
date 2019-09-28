@@ -37,6 +37,9 @@ vpoke0:	.macro
 		lda #\1
 		sta Vera.IO_VERA.data0
 .endm
+vpoke0A:	.macro
+		sta Vera.IO_VERA.data0
+.endm
 vwpoke0: .macro
 		lda #<\1
 		sta Vera.IO_VERA.data0
