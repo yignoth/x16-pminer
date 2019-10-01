@@ -27,6 +27,9 @@ lastTerrHeight	.byte		?
 
 ISR_ADDR	= $0314
 GETKEY		= $FFE4
+GETJOY		= $FF06
+JOY1		= $02
+JOY2		= $F2
 L0_MAP_BASE	= $00000
 L1_MAP_BASE	= $04000
 SPRITE_START = $1E000
@@ -38,33 +41,42 @@ HUD_TXT_CLR = $61
 HSCROLL_DELAY_RESET	= 1		; 1 second for every 60 delay
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;		lda #7
+;		sta $9f61		; change to bank 7: Kernel
+;		lda JOY1
+;		cmp #$df
+;		beq +
+;		#vaddr 2, 0
+;		lda JOY1
+;		lsr
+;		lsr
+;		lsr
+;		lsr
+;		#vpoke0A
+;		lda JOY1
+;		and #$0f
+;		#vpoke0A
+;		bra -
+;+
 		jsr titleScreen
 		jsr initGame
 
 		jsr init
 
--		jsr GETKEY
-		cmp #0
-		beq -
-		lda flameEnabled
-		eor #$08
+-		lda JOY1
+		cmp #$f7
+		bne +
+		lda #$08
 		sta flameEnabled
+		bra -
++		stz flameEnabled
 		bra -
 		;rts
 
 init:
-		sei			; disable interrupts
-
-		;save previous interrupt location
-		lda ISR_ADDR
-		sta oldISR
-		lda ISR_ADDR+1
-		sta oldISR+1
-
-		lda #<myIsr				; hook to myisr
-		sta ISR_ADDR
-		lda #>myIsr
-		sta ISR_ADDR+1
+		;
+		; initialize some game variables
+		;
 
 		stz hScrollOff			; init hscroll value
 		stz mapChar				; zero mapChar\
@@ -80,12 +92,26 @@ init:
 
 		#Math.setRndSeed $001
 
-		cli			; enable interrupts
+		;
+		; change to by interrupt routine
+		;
+
+		sei						; disable interrupts
+		lda ISR_ADDR			; save previous interrupt location
+		sta oldISR
+		lda ISR_ADDR+1
+		sta oldISR+1
+		lda #<myIsr				; hook to myisr
+		sta ISR_ADDR
+		lda #>myIsr
+		sta ISR_ADDR+1
+		cli						; enable interrupts
 		rts
 
 
 titleScreen:
 		rts
+
 
 initGame:
 		; most everytrhing is done on data port 0
@@ -152,7 +178,7 @@ myIsr:
 		lda #$01				; clear VERA interrupt status
 		sta Vera.IO_VERA.isr
 
-		dec hScrollDelay		; decrease scroll delay
+		dec hScrollDelay			; decrease scroll delay
 		bne isr_done
 		lda #HSCROLL_DELAY_RESET	; reset if at zero
 		sta hScrollDelay
@@ -212,7 +238,11 @@ myIsr:
 		#vpoke0A
 
 isr_done:
-		jmp (oldISR)
+
+		lda #$01				; clear VERA interrupt status
+		sta Vera.IO_VERA.isr
+
+		jmp (oldISR)			; jump to finish kernel portion of interrupt
 		;ply
 		;plx
 		;pla

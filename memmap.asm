@@ -1,7 +1,7 @@
 ;
 ; Memory map
 ;
-*	= $00
+*	= $04
 .dsection section_ZP
 .cerror * >= $90, "To many ZP variables"
 
