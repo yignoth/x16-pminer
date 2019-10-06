@@ -12,6 +12,8 @@
 *	= $0801
 .dsection section_CODE
 .cerror * >= $9f00, "CODE size is to big"
+.dsection section_DATA
+.cerror * >= $9f00, "DATA size is to big"
 
 *	= $9f00
 .dsection section_IO_AUDIO

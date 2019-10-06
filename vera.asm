@@ -48,7 +48,7 @@ vwpoke0: .macro
 .endm
 
 
-Vera: .proc
+Vera: .block
 
 ; structures
 S_IO: .struct
@@ -418,4 +418,4 @@ Add_A_ToVAddr:
 
 .send section_CODE
 
-.pend
+.bend

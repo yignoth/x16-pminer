@@ -7,8 +7,12 @@ JTOOLS=../../../tools/java
 
 FILES=\
 	pminer.asm\
-	memmap.asm\
-	vera.asm
+	s_titlescreen.asm\
+	s_lander.asm\
+	joystick.asm\
+	vera.asm\
+	math.asm\
+	memmap.asm
 
 ASSETS=\
 	res/font-hud.bin\

@@ -2,15 +2,15 @@
 ; Math Routines
 ;
 
-Math: .proc
+Math: .block
 
 .section section_ZP
 .send section_ZP
 
 .section section_BSS
-rndSeed			.byte   ?
-rndTableIdx		.byte   ?
-rndTableCount	.byte	?
+	rndSeed			.byte   ?
+	rndTableIdx		.byte   ?
+	rndTableCount	.byte	?
 .send section_BSS
 
 
@@ -26,7 +26,7 @@ setRndSeed:	.macro
 		lda #>(\1 & $0f00)
 		sta Math.rndTableIdx			; store table index
 		stz Math.rndTableCount		; 0 count, so we have 256 values
-		jsr Math.doInc
+		jsr Math.Random.doInc
 .endm
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -34,13 +34,11 @@ setRndSeed:	.macro
 ;
 .section section_CODE
 
-
-
 ; Given an initial seed, this will generate 256 different values
 ; before repeating.
 ;
 ; Number is stored in #Math.rndSeed
-Random:
+Random: .proc
 		lda rndSeed
 		beq doEor
 		asl
@@ -59,7 +57,7 @@ doInc:	inc rndTableCount	; increment table count
 		lda randomEorTable,x	; load new EOR value
 		sta doEor+1				; store in random code
 +		rts
-
+.pend
 
 ; a list of EOR values (doEor line) that will produce 256 different values
 randomEorTable:
@@ -67,4 +65,4 @@ randomEorTable:
 
 .send section_CODE
 
-.pend
+.bend

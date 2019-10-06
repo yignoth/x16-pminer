@@ -1,0 +1,3 @@
+GETJOY		= $FF06
+JOY1		= $EF
+JOY2		= $F2
