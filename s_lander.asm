@@ -103,8 +103,7 @@ render: .proc
 		#bpoke $10, Vera.cw_color
 		
 		; this section computes random 
-		jsr GetRandHeight
-		ina									; height must be 1-16 (not 0 to 15)
+		jsr StageCreateTerrain.GetRandHeight
 		sta Vera.cw_height					; store as height of table
 		eor #$ff							; make negative
 		clc
@@ -202,60 +201,6 @@ init: .proc
 		#vpoke0 %00000000					; no-collision, zdepth=2, no-flip
 		#vpoke0 %10100010					; 32x32 sprite, pal-off=32
 
-		rts
-.pend
-
-; This routine gets a random number and then
-; converts it to a terrain height adjustment of
-; -5 to +5 with 0 being the most common.
-; The height cannot be less than 1 or greater than 16, else
-; it is clipped
-GetRandHeight: .proc
-		jsr Math.Random						; get a random number
-		lda Math.rndSeed
-		cmp #84								; check top of neg range
-		bcc r_neg
-		cmp #171							; check bottom of pos range
-		bcs r_pos
-		ldx #0								; no change
-		bra r_done
-r_neg:	ldx #$ff								; -1 height decrease
-		cmp #41								; check for -2
-		bcs r_done
-		dex
-		cmp #19								; check for -3
-		bcs r_done
-		dex
-		cmp #8								; check for -4
-		bcs r_done
-		dex
-		cmp #3								; check for -5
-		bcs r_done
-		dex
-		bra r_done
-r_pos:	ldx #1								; +1 height increase
-		cmp #215							; check for +2
-		bcc r_done
-		inx
-		cmp #237							; check for +3
-		bcc r_done
-		inx
-		cmp #248							; check for +4
-		bcc r_done
-		inx
-		cmp #253							; check for +5
-		bcc r_done
-		inx
-r_done:	txa									; x to A
-		clc
-		adc lastTerrHeight					; add to height
-		bpl +
-		lda #$00							; min of zero allowed
-		bra r_fin
-+		cmp #$10							; max of 15 allowed
-		bcc r_fin
-		lda #$0f							; clip at 15
-r_fin:	sta lastTerrHeight
 		rts
 .pend
 

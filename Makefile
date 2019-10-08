@@ -8,10 +8,12 @@ JTOOLS=../../../tools/java
 FILES=\
 	pminer.asm\
 	s_titlescreen.asm\
+	s_create_terrain.asm\
 	s_lander.asm\
 	joystick.asm\
 	vera.asm\
 	math.asm\
+	utils.asm\
 	memmap.asm
 
 ASSETS=\

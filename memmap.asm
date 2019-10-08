@@ -1,6 +1,9 @@
 ;
 ; Memory map
 ;
+HIMEM = $A000
+
+
 *	= $04
 .dsection section_ZP
 .cerror * >= $90, "To many ZP variables"
@@ -26,6 +29,6 @@
 *	= $9f80
 .dsection section_IO_RTC
 
-*	= $A000
+*	= HIMEM
 .dsection section_HIMEM
 .cerror * > $bfff, "HIMEM data size to big"

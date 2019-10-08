@@ -35,12 +35,15 @@ jumpTable:
 
 
 init:
+	rts
 
 
 update:
+	rts
 
 
 render:
+	rts
 
 
 .send section_CODE

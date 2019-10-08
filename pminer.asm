@@ -177,8 +177,10 @@ mainIsr:
 ; included libraries
 ;
 .include "s_titlescreen.asm"
+.include "s_create_terrain.asm"
 .include "s_lander.asm"
 .include "joystick.asm"
 .include "vera.asm"
 .include "math.asm"
+.include "utils.asm"
 .include "memmap.asm"
