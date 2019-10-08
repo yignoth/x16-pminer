@@ -92,6 +92,7 @@ PALETTE			= $F1000
 L0_CTRL0		= $F2000		; layer 1 control port
 L0_HSCROLL		= $F2006
 L1_CTRL0		= $F3000		; layer 2 control port
+L1_HSCROLL		= $F3006
 SPRITE_REG		= $F4000
 SPRITE_ATTS		= $F5000
 AUDIO			= $F6000
@@ -340,9 +341,13 @@ AddCwRowColToVAddr32:		; map width of 32 (64 bytes row increment)
 		adc Vera.IO_VERA.addrL
 		sta Vera.IO_VERA.addrL
 		bcc +
-		inc Vera.IO_VERA.addrM
+		lda Vera.IO_VERA.addrM
+		adc #0
+		sta Vera.IO_VERA.addrM
 		bcc +
-		inc Vera.IO_VERA.addrH
+		lda Vera.IO_VERA.addrH
+		adc #0
+		sta Vera.IO_VERA.addrH
 +		lda cw_row
 		lsr
 		lsr
@@ -362,9 +367,13 @@ AddCwRowColToVAddr64:		; map width of 64 (128 bytes row increment)
 		adc Vera.IO_VERA.addrL
 		sta Vera.IO_VERA.addrL
 		bcc +
-		inc Vera.IO_VERA.addrM
+		lda Vera.IO_VERA.addrM
+		adc #0
+		sta Vera.IO_VERA.addrM
 		bcc +
-		inc Vera.IO_VERA.addrH
+		lda Vera.IO_VERA.addrH
+		adc #0
+		sta Vera.IO_VERA.addrH
 +		lda cw_row
 		lsr
 		clc

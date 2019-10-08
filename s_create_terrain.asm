@@ -11,12 +11,14 @@ PHASE_TERRAIN	= 0
 PHASE_TCHARS	= 1
 PHASE_ORE		= 2
 PHASE_DONE		= 3
-TERRAIN_WIDTH	= 1024
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Vars
 ;
 .section section_ZP
+tcol_addr		.word	?				; pointer to terrain map address of the current column
+tchar_addr		.word	?
 .send section_ZP
 
 .section section_BSS
@@ -44,95 +46,186 @@ phase			.byte	?				; the current phase
 										; phase 1 = generate terrain characters
 										; phase 2 = generate ore locations
 										; phase 3 = done, switch to next stage
-tcol			.word	?				; the current column being generated
-tcol_addr		.word	?				; the HIMEM address of the current column
 last_height		.byte	?				; the current terrain height
 btmp			.byte	?				; tmp byte
+thL				.byte	?				; terrain height value 1, 2, 3
+thM				.byte	?
+thR				.byte	?
 
 
-init:
+init: .proc
 	#CLS $01
 	#PRINTXY 40-19/2, 10, text_create
 
 	lda #PHASE_TERRAIN
 	sta phase							; initialize stage variables
-	lda #8
-	sta last_height
-
-	stz tcol							; initialize tcol and mem storage address
-	stz tcol+1
-	lda #<HIMEM
-	sta tcol_addr
-	lda #>HIMEM
-	sta tcol_addr+1
 
 	rts
+.pend
 
 
-update:
+update: .proc
 	lda phase
 	cmp #PHASE_TERRAIN
 	bne +
 	jsr generateTerrainHeight
-	bra udone
+	bra done
 
 +	cmp #PHASE_TCHARS
 	bne +
 	jsr generateTerrainChars
-	bra udone
+	bra done
 
 +	cmp #PHASE_ORE
 	bne +
 	jsr generateOreLocations
-	bra udone
+	bra done
 
 +	#CHANGE_STAGE StageLander
-udone:
+done:
 	rts
+.pend
 
 
-render:
+render:	.proc
 	#vaddr 2, 0
-	lda tcol
+	lda phase
 	clc
 	adc Vera.IO_VERA.addrL
 	sta Vera.IO_VERA.addrL
 	lda phase
 	#vpoke0A
 	rts
+.pend
 
 
-generateOreLocations:
+generateOreLocations: .proc
 	lda #PHASE_DONE
 	sta phase
 	rts
+.pend
 
-generateTerrainChars:
+generateTerrainChars: .proc
+	lda #<TERRAIN_HEIGHT_ADDR+1	; initialize tcol and tchar addresses
+	sta tcol_addr
+	lda #>TERRAIN_HEIGHT_ADDR+1
+	sta tcol_addr+1
+	lda #<TERRAIN_CHAR_ADDR
+	sta tchar_addr
+	lda #>TERRAIN_CHAR_ADDR
+	sta tchar_addr+1
+
+	lda TERRAIN_HEIGHT_ADDR + TERRAIN_MAP_WIDTH -1		; init thL, thM:  TERRAIN_CHAR_ADDR = TERRAIN
+	sta thL												; store height left of us
+	lda TERRAIN_HEIGHT_ADDR
+	sta thM												; store height at our column
+
+loop:
+	;
+	; figure out which brick to use
+	lda (tcol_addr)				; load height to right of us
+	sta thR						; store thR
+
+	lda thM
+	cmp thL						; compare M to L
+	bge cs1						; if M >= L then cs1
+	cmp thR
+	bge +
+	lda #BRICK_PIT				; "v"
+	bra lstore
++	beq +
+	lda #BRICK_RIGHT			; "\_
+	bra lstore
++	lda #BRICK_SOLID			; "--
+	bra lstore
+cs1:
+	bne cs2						; if M > L then cs2
+	cmp thR
+	beq +
+	blt + 
+	lda #BRICK_RIGHT			; -\_
+	bra lstore
++	lda #BRICK_SOLID			; ---, --"
+	bra lstore
+cs2:
+	cmp thR
+	beq +
+	blt +
+	lda #BRICK_TOP
+	bra lstore
++	lda #BRICK_LEFT
+lstore:
+	sta (tchar_addr)			; store terrain character
+
+	inc tchar_addr				; inc tchar_addr
+	bne +
+	inc tchar_addr+1
++
+	lda tchar_addr
+	cmp #<TERRAIN_ORE_ADDR		; check if we are done
+	bne +
+	lda tchar_addr+1
+	cmp #>TERRAIN_ORE_ADDR
+	beq done
+
++
+	inc tcol_addr				; inc tcol_addr
+	bne +
+	inc tcol_addr+1
++
+	lda tcol_addr
+	cmp #<TERRAIN_CHAR_ADDR		; check if we have rolled over
+	bne loop2
+
+	lda tcol_addr+1
+	cmp #>TERRAIN_CHAR_ADDR
+	bne loop2
+
+	lda #<TERRAIN_HEIGHT_ADDR	; reset address
+	sta tcol_addr
+	lda #>TERRAIN_HEIGHT_ADDR
+	sta tcol_addr+1
+loop2:
+	lda thM						; shift M to L
+	sta thL
+	lda thR						; shift R to M
+	sta thM
+
+	bra loop
+
+done:
 	lda #PHASE_ORE
 	sta phase
 	rts
+.pend
 
-generateTerrainHeight:
+generateTerrainHeight: .proc
+	lda #<TERRAIN_HEIGHT_ADDR	; initialize tcol addr
+	sta tcol_addr
+	lda #>TERRAIN_HEIGHT_ADDR
+	sta tcol_addr+1
+	lda #8						; initial height value
+	sta last_height
+
+-
 	jsr GetRandHeight		; get a random height (return value in A)
-	sta tcol_addr			; store it
-	inc tcol				; inc tcol by 1
-	bcc +
-	inc tcol+1
+	sta (tcol_addr)			; store it
 
-+	inc tcol_addr			; inc tcol_addr by 1
-	bcc +
+	inc tcol_addr			; inc tcol_addr by 1
+	bne +
 	inc tcol_addr+1
 
-+	lda tcol+1
-	cmp #>TERRAIN_WIDTH
-	bne generateTerrainHeight
-	lda tcol
-	cmp #<TERRAIN_WIDTH
-	bne generateTerrainHeight
++	lda tcol_addr+1				; check if we are done
+	cmp #>TERRAIN_CHAR_ADDR
+	bne -
+	lda tcol_addr
+	cmp #<TERRAIN_CHAR_ADDR
+	bne -
 
-	lda #PHASE_TCHARS
+	lda #PHASE_TCHARS		; switch phases
 	sta phase
 	rts
+.pend
 
 
 ; This routine gets a random number and then

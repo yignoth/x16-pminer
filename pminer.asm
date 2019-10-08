@@ -176,6 +176,8 @@ mainIsr:
 ;
 ; included libraries
 ;
+.include "memmap.asm"
+.include "const.asm"
 .include "s_titlescreen.asm"
 .include "s_create_terrain.asm"
 .include "s_lander.asm"
@@ -183,4 +185,3 @@ mainIsr:
 .include "vera.asm"
 .include "math.asm"
 .include "utils.asm"
-.include "memmap.asm"

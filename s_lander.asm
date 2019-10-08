@@ -17,7 +17,6 @@ SPRITE_LANDER_FLAME = (SPRITE_LANDER+512)
 VERA_ENABLE_FLAME = (Vera.SPRITE_ATTS + 8 + 6)
 HUD_OUT_CLR	= $8B
 HUD_TXT_CLR = $61
-HSCROLL_DELAY_RESET	= 1		; 1 second for every 60 delay
 
 GETKEY		= $FFE4
 
@@ -26,15 +25,11 @@ GETKEY		= $FFE4
 ; Vars
 ;
 .section section_ZP
+	btmp				.byte		?
+	wtmp				.word		?
 .send section_ZP
 
 .section section_BSS
-hScrollDelay	.byte		?
-hScrollOff		.byte		?
-hScrollPos		.byte		?
-flameEnabled	.byte		?
-mapChar			.byte		?
-lastTerrHeight	.byte		?
 .send section_BSS
 
 
@@ -53,95 +48,223 @@ jumpTable:
 	jmp update
 	jmp render
 
+; vars
+hScrollValue		.byte		?
+hScrollPos			.byte		?
+flameEnabled		.byte		?
+landerXPos			.word		?			; bits 12-3 (are terrain pos), bit 2-0 (scroll pos)
+landerYPos			.word		?
+terrainHeight		.byte		?
+terrainChar			.byte		?
+curr_height			.byte		?
+
+
 update: .proc
 		; main game loop
 		jsr GETJOY				; process joystick input
 		lda JOY1				; read joystick value
-		bit #$08				; bit 3 clear means up arrow is pushed
+		tax
+		bit #JOY_UP				; bit 3 clear means up arrow is pushed
 		bne +
 		lda #$08				; enable flame sprite
 		sta flameEnabled
-		rts
+		bra ++
 +		stz flameEnabled
++
+		txa
+		bit #JOY_RIGHT
+		bne +
+		lda landerXPos
+		clc
+		adc #8
+		sta landerXPos
+		bcc +
+		;inc landerXPos
+		;bne +
+		inc landerXPos+1
++
+		txa
+		bit #JOY_LEFT
+		bne +
+		lda landerXPos
+		sec
+		sbc #8
+		sta landerXPos
+		cmp #$f8
+		blt +
+		;dea
+		;sta landerXPos
+		;cmp #$ff
+		;bne +
+		dec landerXPos+1
++
 		rts
 .pend
 
 render: .proc
-		dec hScrollDelay			; decrease scroll delay
-		bne renderDone
-		lda #HSCROLL_DELAY_RESET	; reset if at zero
-		sta hScrollDelay
-
-		#vaddr 0, Vera.L0_HSCROLL
-		inc Vera.IO_VERA.data0
-
-		lda hScrollOff
-		ina
-		cmp #8
-		bne +
-		lda #0
-+		sta hScrollOff
-		bne renderDone
-
-		; clear next column with FillWindow
-		#bpoke 1, Vera.cw_row
-		#bpoke 1, Vera.cw_width
-		#bpoke 28, Vera.cw_height
-		#bpoke $20, Vera.cw_char				; clear/blank char
-		#bpoke $10, Vera.cw_color
-		#bpoke (32 - 1)<<1, Vera.cw_winc
-
-		lda hScrollPos							; set column to current hscroll col
-		sta Vera.cw_col
-
-		#vaddr 1, L0_MAP_BASE					; fill with blanks
-		jsr Vera.AddCwRowColToVAddr32
-		jsr Vera.FillWindow
-
-		; fill next column with terrain
-		#bpoke $21, Vera.cw_char				; change to terrain character
-		#bpoke $10, Vera.cw_color
-		
-		; this section computes random 
-		jsr StageCreateTerrain.GetRandHeight
-		sta Vera.cw_height					; store as height of table
-		eor #$ff							; make negative
-		clc
-		adc #30								; add 28+1+1 (+1 neg +1 starting row) (height of column)
-		sta Vera.cw_row
-
-		#vaddr 1, L0_MAP_BASE
-		jsr Vera.AddCwRowColToVAddr32			; draw terrain
-		jsr Vera.FillWindow
-
-		; increase HScroll column position
-		lda hScrollPos
-		ina
-		and #$1f
-		sta hScrollPos
-
 		; show flame sprite if enabled
 		#vaddr 1, VERA_ENABLE_FLAME
 		lda flameEnabled
 		#vpoke0A
 
+		; get the terrain height address (landerXPos >> 3 is the terrain map position)
+		lda landerXPos+1
+		sta btmp
+		lda landerXPos
+		lsr btmp						; divide by 8 (to get scroll value)
+		ror
+		lsr btmp
+		ror
+		lsr btmp
+		ror
+		sta hScrollValue				; save intermediate 8 bit scroll value
+
+		lsr btmp						; divide by 8 more to get terrain map position
+		ror
+		lsr btmp
+		ror
+		lsr btmp
+		ror
+		sta hScrollPos					; save lower byte of Xpos in hScrollPos
+
+		clc								; add terrain height addr
+		adc #<TERRAIN_HEIGHT_ADDR
+		sta wtmp						; store
+		lda btmp
++		adc #>TERRAIN_HEIGHT_ADDR
+		sta wtmp+1
+
+		; get height from current terrain height address
+		lda (wtmp)
+		sta terrainHeight
+
+		; add address for terrain character
+		lda wtmp
+		clc
+		adc #<TERRAIN_MAP_WIDTH
+		sta wtmp
+		lda wtmp+1
+		adc #>TERRAIN_MAP_WIDTH
+		sta wtmp+1
+
+		; get terrain character
+		lda (wtmp)
+		sta terrainChar
+
+		#vaddr 0, Vera.L0_HSCROLL				; set VERA scroll counter
+		lda hScrollValue
+		sta Vera.IO_VERA.data0
+
+		; get the off map fill position
+		lda hScrollPos						; get x-pos scroll byte
+		clc
+		adc #30								; add 30 to write in invisible column
+		and #$1f							; and to 0-31 (map size is 32)
+		asl									; 2 bytes per tile
+		
+		; set vera address to L0 base + current fill column (row=0, col=hScrollPos)
+		clc
+		adc #<L0_MAP_BASE				; get lo byte of vera addr
+		sta Vera.IO_VERA.addrL			; store VaddrL
+		lda #>L0_MAP_BASE
+		adc #0
+		sta Vera.IO_VERA.addrM
+		lda #`L0_MAP_BASE
+		adc #0
+		ora #$10						; set VADDR increment to 1
+		sta Vera.IO_VERA.addrH
+
+;	lda #BRICK_TOP
+;	jsr drawBrick
+;	lda #BRICK_SOLID
+;	jsr drawBrick
+;	lda #BRICK_RIGHT
+;	jsr drawBrick
+;	jmp loopDone
+
+		lda #30
+		sta btmp							; fill 30 rows in current column
+
+		; XXXXXXXXXXXX landerYPos also needs to be a word because of scroll (3 bytes)
+		lda landerYPos						; start 7 rows above lander position
+		clc
+		adc #7
+		sta curr_height
+
+		; Main draw loop
+loop1:
+		lda curr_height						; compare curr_height to terrain height
+		cmp terrainHeight
+		beq out1							; if equal (goto draw char)
+		blt loop2							; else if we are below it goto loop2
+
+		lda #BRICK_NONE
+		jsr drawBrick
+
+		dec btmp
+		beq loopDone
+		dec curr_height
+		bra loop1
+
+out1:
+		lda terrainChar
+		jsr drawBrick
+
+		dec btmp
+		beq loopDone
+		dec curr_height
+
+loop2:
+;		lda curr_height
+;		cmp ORE_HEIGHT
+;		bne +
+		lda #BRICK_SOLID
+;		bra ++
+;+		lda #BRICK_ORE
+;+
+		jsr drawBrick
+
+		dec btmp
+		beq loopDone
+		dec curr_height
+		bra loop2
+
+loopDone:
 renderDone:
 		rts
 .pend
 
 
+drawBrick	.proc
+		#vpoke0A
+		#vpoke0 $10
+		lda Vera.IO_VERA.addrL		; add 63 to get to next row
+		clc
+		adc #62
+		sta Vera.IO_VERA.addrL
+		bcc +
+		lda Vera.IO_VERA.addrM
+		adc #0
+		sta Vera.IO_VERA.addrM
+		bcc +
+		lda Vera.IO_VERA.addrH
+		adc #0
+		sta Vera.IO_VERA.addrH
++		rts
+.pend
+
+
 init: .proc
-		stz hScrollOff			; init hscroll value
-		stz mapChar				; zero mapChar\
+		stz hScrollValue			; init hscroll value
 		stz flameEnabled		; no lander flame enabled
 
-		lda #8
-		sta lastTerrHeight
+		stz landerXPos			; lander initial x position
+		stz landerXPos+1
+		lda #22
+		sta landerYPos			; lander initial y position
 
-		lda #30					; set initial hscroll position (on Layer0 Map)
+		lda #29					; set initial hscroll position (on Layer0 Map)
 		sta hScrollPos
-		lda #HSCROLL_DELAY_RESET		; scroll delay
-		sta hScrollDelay
 
 		; most everytrhing is done on data port 0
 		#Vera.setDataPort 0
@@ -168,7 +291,8 @@ init: .proc
 		; fill window: mapBase, numMapCols, c, r, w, h, chr, clr
 		#Vera.fillWindow L0_MAP_BASE, 32, 0, 0, 32, 32, $20, $10		; fill layer0 with dots
 		#Vera.fillWindow L1_MAP_BASE, 64, 1, 1, 28, 28, 0, 0			; HUD clear viewport to see layer0
-		#Vera.fillWindow L1_MAP_BASE, 64, 0, 0, 40, 1, 3, 0				; HUD top H line
+		#Vera.fillWindow L1_MAP_BASE, 64, 0, 0, 40, 1, 0, 0				; HUD top H line
+		;#Vera.fillWindow L1_MAP_BASE, 64, 0, 0, 40, 1, 3, 0				; HUD top H line
 		#Vera.fillWindow L1_MAP_BASE, 64, 0, 29, 40, 1, 3, 0			; HUD bottom H line
 		#Vera.fillWindow L1_MAP_BASE, 64, 0, 0, 1, 30, 4, 0				; HUD left V line
 		#Vera.fillWindow L1_MAP_BASE, 64, 29, 0, 1, 30, 4, 0			; HUD mid V line
@@ -189,15 +313,15 @@ init: .proc
 		#vaddr 1, Vera.SPRITE_ATTS
 		#vpoke0 ((SPRITE_LANDER & $1fff) >> 5)	; bits 12-5 of bitmap address
 		#vpoke0 (SPRITE_LANDER >> 13)		; 4bpp + bits 16:13 of bmap addr
-		#vwpoke0 104						; x = 104 (middle of hud window)
-		#vwpoke0 24							; y = 24 near top
+		#vwpoke0 108						; x = 108 (middle of hud window)
+		#vwpoke0 64							; y = 64 above middle
 		#vpoke0 %00001000					; no-collision, zdepth=2, no-flip
 		#vpoke0 %10100010					; 32x32 sprite, pal-off=32
 		; setup lander_flame sprite
 		#vpoke0 ((SPRITE_LANDER_FLAME & $1fff) >> 5)	; bits 12-5 of bitmap address
 		#vpoke0 (SPRITE_LANDER_FLAME >> 13)		; 4bpp + bits 16:13 of bmap addr
-		#vwpoke0 104						; x = 104 (middle of hud window)
-		#vwpoke0 24							; y = 24 near top
+		#vwpoke0 108						; x = 108 (middle of hud window)
+		#vwpoke0 64							; y = 64 above middle
 		#vpoke0 %00000000					; no-collision, zdepth=2, no-flip
 		#vpoke0 %10100010					; 32x32 sprite, pal-off=32
 

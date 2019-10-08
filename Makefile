@@ -6,6 +6,7 @@ EMUDIR = ../../../x16emu
 JTOOLS=../../../tools/java
 
 FILES=\
+	const.asm\
 	pminer.asm\
 	s_titlescreen.asm\
 	s_create_terrain.asm\
