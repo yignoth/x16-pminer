@@ -57,6 +57,7 @@ landerYPos			.word		?
 terrainHeight		.byte		?
 terrainChar			.byte		?
 curr_height			.byte		?
+vera_addr			.long		?
 
 
 update: .proc
@@ -166,22 +167,32 @@ render: .proc
 		clc
 		adc #<L0_MAP_BASE				; get lo byte of vera addr
 		sta Vera.IO_VERA.addrL			; store VaddrL
+		sta vera_addr
 		lda #>L0_MAP_BASE
 		adc #0
+		sta vera_addr+1
 		sta Vera.IO_VERA.addrM
 		lda #`L0_MAP_BASE
 		adc #0
-		ora #$10						; set VADDR increment to 1
+		ora #$70						; set VADDR increment to 7 = 64 bytes
+		sta vera_addr+2
 		sta Vera.IO_VERA.addrH
 
-;	lda #BRICK_TOP
-;	jsr drawBrick
-;	lda #BRICK_SOLID
-;	jsr drawBrick
-;	lda #BRICK_RIGHT
-;	jsr drawBrick
-;	jmp loopDone
+		; now set vera1 address
+		#Vera.setDataPort 1
+		clc
+		lda vera_addr
+		adc #1
+		sta Vera.IO_VERA.addrL
+		lda vera_addr+1
+		adc #0
+		sta Vera.IO_VERA.addrM
+		lda vera_addr+2
+		adc #0
+		sta Vera.IO_VERA.addrH
+		#Vera.setDataPort 0
 
+		; Initialize drawing loop counter
 		lda #30
 		sta btmp							; fill 30 rows in current column
 
@@ -199,7 +210,9 @@ loop1:
 		blt loop2							; else if we are below it goto loop2
 
 		lda #BRICK_NONE
-		jsr drawBrick
+		sta Vera.IO_VERA.data0
+		lda #$10
+		sta Vera.IO_VERA.data1
 
 		dec btmp
 		beq loopDone
@@ -208,7 +221,9 @@ loop1:
 
 out1:
 		lda terrainChar
-		jsr drawBrick
+		sta Vera.IO_VERA.data0
+		lda #$10
+		sta Vera.IO_VERA.data1
 
 		dec btmp
 		beq loopDone
@@ -222,7 +237,9 @@ loop2:
 ;		bra ++
 ;+		lda #BRICK_ORE
 ;+
-		jsr drawBrick
+		sta Vera.IO_VERA.data0
+		lda #$10
+		sta Vera.IO_VERA.data1
 
 		dec btmp
 		beq loopDone
@@ -232,25 +249,6 @@ loop2:
 loopDone:
 renderDone:
 		rts
-.pend
-
-
-drawBrick	.proc
-		#vpoke0A
-		#vpoke0 $10
-		lda Vera.IO_VERA.addrL		; add 63 to get to next row
-		clc
-		adc #62
-		sta Vera.IO_VERA.addrL
-		bcc +
-		lda Vera.IO_VERA.addrM
-		adc #0
-		sta Vera.IO_VERA.addrM
-		bcc +
-		lda Vera.IO_VERA.addrH
-		adc #0
-		sta Vera.IO_VERA.addrH
-+		rts
 .pend
 
 
