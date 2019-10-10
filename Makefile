@@ -24,8 +24,8 @@ ASSETS=\
 	res/s_lander_flame.bin
 
 test.prg: $(FILES) $(ASSETS)
-	64tass -C -B --line-numbers --verbose-list --tab-size=4 --m65c02 -L pminer.lst -o pminer.prg pminer.asm
-	cp pminer.prg $(EMUDIR)/PMINER.PRG
+	64tass -C -B --line-numbers --verbose-list --tab-size=4 --m65c02 -L pminer.lst -o PMINER.PRG pminer.asm
+	cp PMINER.PRG $(EMUDIR)/PMINER.PRG
 	cp res/*.bin $(EMUDIR)/res/
 
 res/font-hud.bin: res/font-hud.png
