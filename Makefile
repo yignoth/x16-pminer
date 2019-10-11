@@ -11,6 +11,7 @@ FILES=\
 	s_titlescreen.asm\
 	s_create_terrain.asm\
 	s_lander.asm\
+	s_exit.asm\
 	joystick.asm\
 	vera.asm\
 	math.asm\

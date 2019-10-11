@@ -17,8 +17,9 @@ SPRITE_LANDER_FLAME = (SPRITE_LANDER+512)
 VERA_ENABLE_FLAME = (Vera.SPRITE_ATTS + 8 + 6)
 HUD_OUT_CLR	= $8B
 HUD_TXT_CLR = $61
-DIR_RIGHT = 0
-DIR_LEFT = 1
+HDIR_NONE = 0
+HDIR_RIGHT = 3
+HDIR_LEFT = 2
 
 GETKEY		= $FFE4
 
@@ -60,13 +61,16 @@ terrainChar			.byte		?
 curr_height			.byte		?
 vera_addr			.long		?
 
-; landerXPos: bits (0-15) fraction, bits (16-23) are scroll value, bits (19-31) are terrain column
-; however, terrain is only 1024 bit, so actual only bits (19-28) are used for terrain column
+; landerXPos: bits (0-15) fraction, bits (16-23) are scroll value, bits (19-28) are terrain column (0-1023)
 landerXPos			.dword		?
 landerYPos			.byte		?
+; next draw X position (offset from lander position)
+drawXPos			.word		?
 
 
 update: .proc
+		stz hMoveDir
+
 		; main game loop
 		jsr GETJOY				; process joystick input
 		lda JOY1				; read joystick value
@@ -82,35 +86,55 @@ u_checkMoveRight:
 		txa						; check for move right
 		bit #JOY_RIGHT
 		bne u_checkMoveLeft
-		lda DIR_RIGHT			; save direction
+		lda HDIR_RIGHT			; save direction
 		sta hMoveDir
+
 		lda landerXPos+2		; increment Xpos by 1 position
 		clc
 		adc #1
 		sta landerXPos+2
-		bcc u_done
-		;inc landerXPos
-		;bne +
-		inc landerXPos+3
+		lda landerXPos+3
+		adc #0
+		and #$1f				; only use bits 24-28 for this byte to limit to 1023 max
+		sta landerXPos+3
+
+ur_done:
+		clc						; now add 30 (off screen area) for next map position to draw
+		lda landerXPos+2
+		adc #30<<3				; 30 bytes to right << 3 (for scroll) = 240
+		sta drawXPos
+		lda landerXPos+3
+		adc #0
+		and #$1f
+		sta drawXPos+1
 		bra u_done
 
 u_checkMoveLeft:
 		txa						; check for move left
 		bit #JOY_LEFT
 		bne u_done
-		lda DIR_LEFT			; save direction
+		lda HDIR_LEFT			; save direction
 		sta hMoveDir
+
 		lda landerXPos+2		; decrement Xpos by 1 scroll position
 		sec
 		sbc #1
-		cmp landerXPos+2		; A > landerXPos if we have rolled over
 		sta landerXPos+2
-		blt u_done
-		;dea
-		;sta landerXPos
-		;cmp #$ff
-		;bne u_done
-		dec landerXPos+3
+		lda landerXPos+3
+		sbc #0
+		and #$1f				; limit to bites 24-28 since max terrain column is 1023
+		sta landerXPos+3
+
+ul_done:
+		sec						; now subtract 2 for the next terrain update position
+		lda landerXPos+2
+		sbc #0<<3					; 1 byte to left << 3 (for scroll) = 8
+		sta drawXPos
+		bcc u_done
+		lda landerXPos+3
+		sbc #0
+		and #$1f
+		sta drawXPos+1
 
 u_done:
 		rts
@@ -122,12 +146,74 @@ render: .proc
 		lda flameEnabled
 		#vpoke0A
 
-		; get the terrain height address (landerXPos >> 3) is the terrain map position)
-		lda landerXPos+3
-		sta btmp
+		; draws the terrain at the current landerXPos and landerYPos
+		lda hMoveDir
+		beq +
+		jsr drawTerrain
++
+
+loopDone:
+renderDone:
+		rts
+.pend
+
+
+init: .proc
+		stz hScrollValue			; init hscroll value
+		stz flameEnabled		; no lander flame enabled
+
+		stz landerXPos			; lander initial x position
+		stz landerXPos+1
+		stz landerXPos+2
+		stz landerXPos+3
+		lda #22
+		sta landerYPos			; lander initial y position
+
+		lda #29					; set initial hscroll position (on Layer0 Map)
+		sta hScrollPos
+
+		; most everytrhing is done on data port 0
+		#Vera.setDataPort 0
+
+		; set screen to 320x240
+		#Vera.setScreenRes 320,240
+
+		; setup layer 0: mode=0/e=1, map=32x32, map=$0000, tile=font0, h/v-scroll=0
+		#Vera.layerSetup 0, %01100001, $00, L0_MAP_BASE, Vera.FONT_LPETSCII, $0000, $0000
+		; setup layer 1: mode=3/e=1, map=64x32, map=$4000, tile=font0, h/v-scroll=0
+;XXX temp commented out so we can see map drawing
+		#Vera.layerSetup 1, %01100001, $01, L1_MAP_BASE, Vera.FONT_LPETSCII, $0000, $0000
+;
+		; enable sprites
+		#vaddr 1, Vera.SPRITE_REG
+		#vpoke0 1
+
+		; copy the palette data over to VERA
+		#Vera.copyDataToVera palette, Vera.PALETTE, 512
+		; copy the 'font' data into low PETSCII location only copying 64 characters
+		#Vera.copyDataToVera font, Vera.FONT_LPETSCII, 64*4*8
+		; copy sprite data to vera
+		#Vera.copyDataToVera s_lander, SPRITE_LANDER, 512
+		#Vera.copyDataToVera s_lander_flame, SPRITE_LANDER_FLAME, 512
+
+		; draw initial terrain
+		jsr drawInitTerrain
+
+		; draw HUD & lander
+		jsr drawHUD
+
+		rts
+.pend
+
+drawTerrain: .proc
+		; get the scroll position which is the landerXPos 3rd byte
 		lda landerXPos+2
 		sta hScrollValue				; save intermediate 8 bit scroll value
 
+		; now find next terrain address and draw that column
+		lda drawXPos+1
+		sta btmp
+		lda drawXPos
 		lsr btmp						; divide by 8 to get terrain map position (column)
 		ror a
 		lsr btmp
@@ -164,10 +250,14 @@ render: .proc
 		lda hScrollValue
 		sta Vera.IO_VERA.data0
 
+
+
+;XXX; here: don't need to add 30 to hscrollPos?????
+;XXX; here: since landerXPos and drawXPos is already off by 30?
 		; get the off map fill position
 		lda hScrollPos						; get x-pos scroll byte
-		clc
-		adc #30								; add 30 to write in invisible column
+;		clc
+;		adc #30								; add 30 to write in invisible column
 		and #$1f							; and to 0-31 (map size is 32)
 		asl	a								; 2 bytes per tile
 		
@@ -255,49 +345,39 @@ loop2:
 		bra loop2
 
 loopDone:
-renderDone:
 		rts
 .pend
 
 
-init: .proc
-		stz hScrollValue			; init hscroll value
-		stz flameEnabled		; no lander flame enabled
+drawInitTerrain: .proc
+		stz drawXPos+1
+		stz drawXPos
+		ldy #31
+-		dey
+		beq +
+		jsr drawTerrain
+		lda drawXPos
+		clc
+		adc #8
+		sta drawXPos
+		lda drawXPos+1
+		adc #0
+		sta drawXPos+1
+		bra -
++
+		stz drawXPos+1
+		stz drawXPos
+		jsr drawTerrain
+		rts
+.pend
 
-		stz landerXPos			; lander initial x position
-		stz landerXPos+1
-		stz landerXPos+2
-		stz landerXPos+3
-		lda #22
-		sta landerYPos			; lander initial y position
-
-		lda #29					; set initial hscroll position (on Layer0 Map)
-		sta hScrollPos
-
-		; most everytrhing is done on data port 0
-		#Vera.setDataPort 0
-
-		; set screen to 320x240
-		#Vera.setScreenRes 320,240
-
-		; setup layer 0: mode=0/e=1, map=32x32, map=$0000, tile=font0, h/v-scroll=0
-		#Vera.layerSetup 0, %01100001, $00, L0_MAP_BASE, Vera.FONT_LPETSCII, $0000, $0000
-		; setup layer 1: mode=3/e=1, map=64x32, map=$4000, tile=font0, h/v-scroll=0
-		#Vera.layerSetup 1, %01100001, $01, L1_MAP_BASE, Vera.FONT_LPETSCII, $0000, $0000
-		; enable sprites
-		#vaddr 1, Vera.SPRITE_REG
-		#vpoke0 1
-
-		; copy the palette data over to VERA
-		#Vera.copyDataToVera palette, Vera.PALETTE, 512
-		; copy the 'font' data into low PETSCII location only copying 64 characters
-		#Vera.copyDataToVera font, Vera.FONT_LPETSCII, 64*4*8
-		; copy sprite data to vera
-		#Vera.copyDataToVera s_lander, SPRITE_LANDER, 512
-		#Vera.copyDataToVera s_lander_flame, SPRITE_LANDER_FLAME, 512
+drawHUD: .proc
+	; XXX
+;	#Vera.fillWindow L1_MAP_BASE, 64, 0, 0, 31, 31, 0, 0			; HUD clear viewport to see layer0
+;	#Vera.fillWindow L1_MAP_BASE, 64, 32, 0, 1, 32, 4, 0			; HUD clear viewport to see layer0
+;	rts
 
 		; fill window: mapBase, numMapCols, c, r, w, h, chr, clr
-		#Vera.fillWindow L0_MAP_BASE, 32, 0, 0, 32, 32, $20, $10		; fill layer0 with dots
 		#Vera.fillWindow L1_MAP_BASE, 64, 1, 1, 28, 28, 0, 0			; HUD clear viewport to see layer0
 		#Vera.fillWindow L1_MAP_BASE, 64, 0, 0, 40, 1, 3, 0				; HUD top H line
 		#Vera.fillWindow L1_MAP_BASE, 64, 0, 29, 40, 1, 3, 0			; HUD bottom H line
@@ -334,6 +414,7 @@ init: .proc
 
 		rts
 .pend
+
 
 .send section_CODE
 

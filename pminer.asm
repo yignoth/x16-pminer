@@ -181,6 +181,7 @@ mainIsr:
 .include "s_titlescreen.asm"
 .include "s_create_terrain.asm"
 .include "s_lander.asm"
+.include "s_exit.asm"
 .include "joystick.asm"
 .include "vera.asm"
 .include "math.asm"
