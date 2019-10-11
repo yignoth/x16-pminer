@@ -279,7 +279,7 @@ r_done:	txa									; x to A
 		bcc r_fin
 		lda #$0f							; clip at 15
 r_fin:	sta last_height
-		ina									; add 1 so value is between 1 & 16
+		inc a								; add 1 so value is between 1 & 16
 		rts
 .pend
 

@@ -24,7 +24,7 @@ ASSETS=\
 	res/s_lander_flame.bin
 
 test.prg: $(FILES) $(ASSETS)
-	64tass -C -B --line-numbers --verbose-list --tab-size=4 --m65c02 -L pminer.lst -o PMINER.PRG pminer.asm
+	64tass -Wall -C -B --line-numbers --verbose-list --tab-size=4 --m65c02 -L pminer.lst -o PMINER.PRG pminer.asm
 	cp PMINER.PRG $(EMUDIR)/PMINER.PRG
 	cp res/*.bin $(EMUDIR)/res/
 

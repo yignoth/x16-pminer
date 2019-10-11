@@ -41,7 +41,7 @@ setRndSeed:	.macro
 Random: .proc
 		lda rndSeed
 		beq doEor
-		asl
+		asl a
 		beq noEor ;if the input was $80, skip the EOR
 		bcc noEor
 doEor:	eor #$1d
@@ -50,7 +50,7 @@ noEor:  sta rndSeed
 doInc:	inc rndTableCount	; increment table count
 		beq +
 		lda rndTableIdx		; if tablecount rolls over, increment table index
-		ina
+		inc a
 		and #$0f			; we only have 15 values so clip it
 		sta rndTableIdx
 		tax

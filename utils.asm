@@ -3,7 +3,7 @@
 ;
 
 PRINTXY: .macro
-	lda #0
+	clc
 	ldy #\1
 	ldx #\2
 	jsr $fff0		; position x,y on text screen
@@ -14,7 +14,6 @@ PRINTXY: .macro
 
 PRINTCHARXYA: .macro
 	pha
-	lda #0
 	jsr $fff0		; position x,y on text screen
 	pla
 	jsr $ffd2		; print character

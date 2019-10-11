@@ -17,6 +17,8 @@ SPRITE_LANDER_FLAME = (SPRITE_LANDER+512)
 VERA_ENABLE_FLAME = (Vera.SPRITE_ATTS + 8 + 6)
 HUD_OUT_CLR	= $8B
 HUD_TXT_CLR = $61
+DIR_RIGHT = 0
+DIR_LEFT = 1
 
 GETKEY		= $FFE4
 
@@ -52,12 +54,16 @@ jumpTable:
 hScrollValue		.byte		?
 hScrollPos			.byte		?
 flameEnabled		.byte		?
-landerXPos			.word		?			; bits 12-3 (are terrain pos), bit 2-0 (scroll pos)
-landerYPos			.word		?
+hMoveDir			.byte		?			; RIGHT = 0, LEFT = 1
 terrainHeight		.byte		?
 terrainChar			.byte		?
 curr_height			.byte		?
 vera_addr			.long		?
+
+; landerXPos: bits (0-15) fraction, bits (16-23) are scroll value, bits (19-31) are terrain column
+; however, terrain is only 1024 bit, so actual only bits (19-28) are used for terrain column
+landerXPos			.dword		?
+landerYPos			.byte		?
 
 
 update: .proc
@@ -69,36 +75,44 @@ update: .proc
 		bne +
 		lda #$08				; enable flame sprite
 		sta flameEnabled
-		bra ++
+		bra u_checkMoveRight
 +		stz flameEnabled
-+
-		txa
+
+u_checkMoveRight:
+		txa						; check for move right
 		bit #JOY_RIGHT
-		bne +
-		lda landerXPos
+		bne u_checkMoveLeft
+		lda DIR_RIGHT			; save direction
+		sta hMoveDir
+		lda landerXPos+2		; increment Xpos by 1 position
 		clc
-		adc #8
-		sta landerXPos
-		bcc +
+		adc #1
+		sta landerXPos+2
+		bcc u_done
 		;inc landerXPos
 		;bne +
-		inc landerXPos+1
-+
-		txa
+		inc landerXPos+3
+		bra u_done
+
+u_checkMoveLeft:
+		txa						; check for move left
 		bit #JOY_LEFT
-		bne +
-		lda landerXPos
+		bne u_done
+		lda DIR_LEFT			; save direction
+		sta hMoveDir
+		lda landerXPos+2		; decrement Xpos by 1 scroll position
 		sec
-		sbc #8
-		sta landerXPos
-		cmp #$f8
-		blt +
+		sbc #1
+		cmp landerXPos+2		; A > landerXPos if we have rolled over
+		sta landerXPos+2
+		blt u_done
 		;dea
 		;sta landerXPos
 		;cmp #$ff
-		;bne +
-		dec landerXPos+1
-+
+		;bne u_done
+		dec landerXPos+3
+
+u_done:
 		rts
 .pend
 
@@ -108,24 +122,18 @@ render: .proc
 		lda flameEnabled
 		#vpoke0A
 
-		; get the terrain height address (landerXPos >> 3 is the terrain map position)
-		lda landerXPos+1
+		; get the terrain height address (landerXPos >> 3) is the terrain map position)
+		lda landerXPos+3
 		sta btmp
-		lda landerXPos
-		lsr btmp						; divide by 8 (to get scroll value)
-		ror
-		lsr btmp
-		ror
-		lsr btmp
-		ror
+		lda landerXPos+2
 		sta hScrollValue				; save intermediate 8 bit scroll value
 
-		lsr btmp						; divide by 8 more to get terrain map position
-		ror
+		lsr btmp						; divide by 8 to get terrain map position (column)
+		ror a
 		lsr btmp
-		ror
+		ror a
 		lsr btmp
-		ror
+		ror a
 		sta hScrollPos					; save lower byte of Xpos in hScrollPos
 
 		clc								; add terrain height addr
@@ -161,7 +169,7 @@ render: .proc
 		clc
 		adc #30								; add 30 to write in invisible column
 		and #$1f							; and to 0-31 (map size is 32)
-		asl									; 2 bytes per tile
+		asl	a								; 2 bytes per tile
 		
 		; set vera address to L0 base + current fill column (row=0, col=hScrollPos)
 		clc
@@ -258,6 +266,8 @@ init: .proc
 
 		stz landerXPos			; lander initial x position
 		stz landerXPos+1
+		stz landerXPos+2
+		stz landerXPos+3
 		lda #22
 		sta landerYPos			; lander initial y position
 

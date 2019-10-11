@@ -331,12 +331,12 @@ FillChar:
 ; Uses: A, Y
 AddCwRowColToVAddr32:		; map width of 32 (64 bytes row increment)
 		lda cw_row
-		asl
-		asl
-		asl
-		asl
-		asl
-		asl
+		asl a
+		asl a
+		asl a
+		asl a
+		asl a
+		asl a
 		clc
 		adc Vera.IO_VERA.addrL
 		sta Vera.IO_VERA.addrL
@@ -349,8 +349,8 @@ AddCwRowColToVAddr32:		; map width of 32 (64 bytes row increment)
 		adc #0
 		sta Vera.IO_VERA.addrH
 +		lda cw_row
-		lsr
-		lsr
+		lsr a
+		lsr a
 		clc
 		adc Vera.IO_VERA.addrM
 		sta Vera.IO_VERA.addrM
@@ -360,7 +360,7 @@ AddCwRowColToVAddr32:		; map width of 32 (64 bytes row increment)
 
 AddCwRowColToVAddr64:		; map width of 64 (128 bytes row increment)
 		lda cw_row
-		lsr
+		lsr a
 		bcc ++
 		lda #$80
 		clc
@@ -375,7 +375,7 @@ AddCwRowColToVAddr64:		; map width of 64 (128 bytes row increment)
 		adc #0
 		sta Vera.IO_VERA.addrH
 +		lda cw_row
-		lsr
+		lsr a
 		clc
 +		adc Vera.IO_VERA.addrM
 		sta Vera.IO_VERA.addrM
@@ -412,7 +412,7 @@ AddCwRowColToVAddr256:		; map width of 256 (512 byte row increment)
 ; A contains the value to add
 AddCwColToVAddr:
 		lda cw_col
-		asl									; *2 for (char,byte)
+		asl a								; *2 for (char,byte)
 Add_A_ToVAddr:
 		clc
 		adc Vera.IO_VERA.addrL
