@@ -104,15 +104,9 @@ u_checkMoveRight:
 		bit #JOY_RIGHT
 		bne u_checkMoveLeft
 
-;		lda #$80
-;		sta landerXVel
-;		lda #$00
-;		sta landerXVel+1
-;		sta landerXVel+2
-;.if 1==0
 		clc
 		lda landerXVel
-		adc #$ff
+		adc #$01
 		sta landerXVel
 		lda landerXVel+1
 		adc #0
@@ -120,14 +114,17 @@ u_checkMoveRight:
 		lda landerXVel+2
 		adc #0
 		sta landerXVel+2
-		bvc u_done				; check if under max velocity
-		lda #$7f				; set max positive velocity ios $7fffff
-		sta landerXVel+2
-		lda #$ff
+		bmi u_done				; we are decreasing the negative velocity
+
+		lda landerXVel+1
+		cmp #$08
+		blt u_done				; check if over max velocity of $0007ff
+		stz landerXVel+2
+		lda #$07
 		sta landerXVel+1
+		lda #$ff
 		sta landerXVel
 		bra u_done
-;.fi
 
 u_checkMoveLeft:
 		txa						; check for move left
@@ -136,7 +133,7 @@ u_checkMoveLeft:
 
 		sec
 		lda landerXVel
-		sbc #$40
+		sbc #$01
 		sta landerXVel
 		lda landerXVel+1
 		sbc #0
@@ -144,10 +141,15 @@ u_checkMoveLeft:
 		lda landerXVel+2
 		sbc #0
 		sta landerXVel+2
-		bvc u_done				; check if pverflow max negative velocity
-		lda #$80				; set to max neg velocity
+		bpl u_done				; we are descreasing a positive velocity
+
+		lda landerXVel+1		; check if over max negative velocity of $fff800
+		cmp #$f8
+		bge u_done
+		lda #$ff
 		sta landerXVel+2
-		stz landerXVel+1
+		lda #$f8				; set to max neg velocity
+		sta landerXVel+1
 		stz landerXVel
 		bra u_done
 
@@ -163,18 +165,14 @@ u_done:
 
 		; add new divided velocity to x position
 		clc
-		lda landerXPos
-		adc ltmp
-		sta landerXPos
 		lda landerXPos+1
-		adc ltmp+1
+		adc landerXVel
 		sta landerXPos+1
 		lda landerXPos+2
-		adc ltmp+2
+		adc landerXVel+1
 		sta landerXPos+2
 		lda landerXPos+3
-;		adc #$ff	; for negative velocities
-		adc #$00
+		adc landerXVel+2
 		and #$1f				; limit x-pos to max 1023 terrain columns
 		sta landerXPos+3
 
