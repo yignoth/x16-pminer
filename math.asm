@@ -18,6 +18,72 @@ Math: .block
 ; Macros
 ;
 
+; Shifts a SIGNED 1-4byte ADDR1 by N bits.
+; <ADDR1> = signed 1-4 byte number which will be shifted by N bits to right.
+; <N> = the number of bits to shift right.
+shiftSignedByNToCopy: .macro
+	.if \2 == 1
+		lda \1
+		asl a
+		.if size(\1) == 4
+			ror \1+3
+		.fi
+		.if size(\1) >= 3
+			ror \1+2
+		.fi
+		.if size(\1) >= 2
+			ror \1+1
+		.fi
+		ror \1
+	.else
+		ldy \1+2
+		.rept \2
+			cpy #$80
+			.if size(\1) == 4
+				ror \1+3
+			.fi
+			.if size(\1) >= 3
+				ror \1+2
+			.fi
+			.if size(\1) >= 2
+				ror \1+1
+			.fi
+			ror \1
+		.next
+	.fi
+.endm
+
+
+; Divides an unsigned 3-byte number at ADDR1 by 64 and puts result into ADDR2 (3bytes).
+; Divide is done by shifting right 6-bits.  Number must be UNSIGNED (won't work for signed numbers).
+; ADDR1 remains untouched.
+; <ADDR1> = unsigned 3 byte number
+; <ADDR2> = unsigned 3 byte result.
+divideUnsignedLongBy64ToCopy: .macro
+		stz \2				
+		stz \2+1
+		stz \2+2
+		lda \1
+		asl a
+		rol \2
+		asl a
+		rol \2
+		lda \1+1
+		asl a
+		rol \2+1
+		asl a
+		rol \2+1
+		ora \2
+		sta \2
+		lda \1+2
+		asl a
+		rol \2+2
+		asl a
+		rol \2+2
+		ora \1+1
+		sta \1+1
+.endm
+
 ; Set random seed:  12 bit value
 ; \1 = 12 bit random alg seed
 setRndSeed:	.macro

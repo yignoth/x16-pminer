@@ -60,7 +60,7 @@ MAIN: .block
 		; switch to kernel bank (7)
 ;		jmp debug
 
-		lda #7
+		lda #0
 		sta ROM_BANK
 
 		; set random seed

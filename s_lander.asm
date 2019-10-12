@@ -17,8 +17,7 @@ SPRITE_LANDER_FLAME = (SPRITE_LANDER+512)
 VERA_ENABLE_FLAME = (Vera.SPRITE_ATTS + 8 + 6)
 HUD_OUT_CLR	= $8B
 HUD_TXT_CLR = $61
-HDIR_NONE = 0
-HDIR_RIGHT = 3
+HDIR_RIGHT = 1
 HDIR_LEFT = 2
 
 GETKEY		= $FFE4
@@ -28,8 +27,27 @@ GETKEY		= $FFE4
 ; Vars
 ;
 .section section_ZP
-	btmp				.byte		?
-	wtmp				.word		?
+; 4 bytes
+.union
+	dtmp					.dword		?
+	.struct
+		.union
+			ltmp			.long	?
+			.struct
+				.union
+					wtmp	.word	?
+					.struct
+					btmp	.byte	?
+					btmp1	.byte	?
+					.ends
+				.endu
+				wtmp1		.word	?
+				btmp2		.byte	?
+			.ends
+		.endu
+		btmp3				.byte	?
+	.ends
+.endu
 .send section_ZP
 
 .section section_BSS
@@ -55,7 +73,7 @@ jumpTable:
 hScrollValue		.byte		?
 hScrollPos			.byte		?
 flameEnabled		.byte		?
-hMoveDir			.byte		?			; RIGHT = 0, LEFT = 1
+hMoveDir			.byte		?			; RIGHT=1, LEFT=2, NONE=0
 terrainHeight		.byte		?
 terrainChar			.byte		?
 curr_height			.byte		?
@@ -64,13 +82,12 @@ vera_addr			.long		?
 ; landerXPos: bits (0-15) fraction, bits (16-23) are scroll value, bits (19-28) are terrain column (0-1023)
 landerXPos			.dword		?
 landerYPos			.byte		?
+landerXVel			.long		?
 ; next draw X position (offset from lander position)
 drawXPos			.word		?
 
 
 update: .proc
-		stz hMoveDir
-
 		; main game loop
 		jsr GETJOY				; process joystick input
 		lda JOY1				; read joystick value
@@ -86,19 +103,92 @@ u_checkMoveRight:
 		txa						; check for move right
 		bit #JOY_RIGHT
 		bne u_checkMoveLeft
-		lda HDIR_RIGHT			; save direction
-		sta hMoveDir
 
-		lda landerXPos+2		; increment Xpos by 1 position
+;		lda #$80
+;		sta landerXVel
+;		lda #$00
+;		sta landerXVel+1
+;		sta landerXVel+2
+;.if 1==0
 		clc
-		adc #1
+		lda landerXVel
+		adc #$ff
+		sta landerXVel
+		lda landerXVel+1
+		adc #0
+		sta landerXVel+1
+		lda landerXVel+2
+		adc #0
+		sta landerXVel+2
+		bvc u_done				; check if under max velocity
+		lda #$7f				; set max positive velocity ios $7fffff
+		sta landerXVel+2
+		lda #$ff
+		sta landerXVel+1
+		sta landerXVel
+		bra u_done
+;.fi
+
+u_checkMoveLeft:
+		txa						; check for move left
+		bit #JOY_LEFT
+		bne u_done
+
+		sec
+		lda landerXVel
+		sbc #$40
+		sta landerXVel
+		lda landerXVel+1
+		sbc #0
+		sta landerXVel+1
+		lda landerXVel+2
+		sbc #0
+		sta landerXVel+2
+		bvc u_done				; check if pverflow max negative velocity
+		lda #$80				; set to max neg velocity
+		sta landerXVel+2
+		stz landerXVel+1
+		stz landerXVel
+		bra u_done
+
+u_done:
+		; divide 3 byte X velocity by 64 and store in (ltmp=L, ltmp+1=M, ltmp=H)
+		lda landerXVel			; make copy of velocity
+		sta ltmp
+		lda landerXVel+1
+		sta ltmp+1
+		lda landerXVel+2
+		sta ltmp+2
+;		.Math.shiftSignedByNToCopy ltmp, 6
+
+		; add new divided velocity to x position
+		clc
+		lda landerXPos
+		adc ltmp
+		sta landerXPos
+		lda landerXPos+1
+		adc ltmp+1
+		sta landerXPos+1
+		lda landerXPos+2
+		adc ltmp+2
 		sta landerXPos+2
 		lda landerXPos+3
-		adc #0
-		and #$1f				; only use bits 24-28 for this byte to limit to 1023 max
+;		adc #$ff	; for negative velocities
+		adc #$00
+		and #$1f				; limit x-pos to max 1023 terrain columns
 		sta landerXPos+3
 
-ur_done:
+		; check velocity direction tp set map update position drawXPos
+		stz hMoveDir
+		lda landerXVel+2
+		bmi u_neg_vel			; if it's negative then we are going left
+		bne u_pos_vel			; if it's positive then we are going right
+		ora landerXVel+1		; check for smaller positive
+		ora landerXVel
+		beq u_rts				; it's zero so no H movement
+u_pos_vel:
+		lda #HDIR_RIGHT
+		sta hMoveDir
 		clc						; now add 30 (off screen area) for next map position to draw
 		lda landerXPos+2
 		adc #30<<3				; 30 bytes to right << 3 (for scroll) = 240
@@ -107,36 +197,20 @@ ur_done:
 		adc #0
 		and #$1f
 		sta drawXPos+1
-		bra u_done
-
-u_checkMoveLeft:
-		txa						; check for move left
-		bit #JOY_LEFT
-		bne u_done
-		lda HDIR_LEFT			; save direction
+		bra u_rts
+u_neg_vel:
+		lda #HDIR_LEFT
 		sta hMoveDir
-
-		lda landerXPos+2		; decrement Xpos by 1 scroll position
-		sec
-		sbc #1
-		sta landerXPos+2
-		lda landerXPos+3
-		sbc #0
-		and #$1f				; limit to bites 24-28 since max terrain column is 1023
-		sta landerXPos+3
-
-ul_done:
 		sec						; now subtract 2 for the next terrain update position
 		lda landerXPos+2
-		sbc #0<<3					; 1 byte to left << 3 (for scroll) = 8
+		sbc #0<<3				; 1 byte to left << 3 (for scroll) = 8
 		sta drawXPos
 		bcc u_done
 		lda landerXPos+3
 		sbc #0
 		and #$1f
 		sta drawXPos+1
-
-u_done:
+u_rts:
 		rts
 .pend
 
@@ -166,6 +240,9 @@ init: .proc
 		stz landerXPos+1
 		stz landerXPos+2
 		stz landerXPos+3
+		stz landerXVel
+		stz landerXVel+1
+		stz landerXVel+2
 		lda #22
 		sta landerYPos			; lander initial y position
 
@@ -212,20 +289,20 @@ drawTerrain: .proc
 
 		; now find next terrain address and draw that column
 		lda drawXPos+1
-		sta btmp
+		sta btmp2
 		lda drawXPos
-		lsr btmp						; divide by 8 to get terrain map position (column)
+		lsr btmp2						; divide by 8 to get terrain map position (column)
 		ror a
-		lsr btmp
+		lsr btmp2
 		ror a
-		lsr btmp
+		lsr btmp2
 		ror a
 		sta hScrollPos					; save lower byte of Xpos in hScrollPos
 
 		clc								; add terrain height addr
 		adc #<TERRAIN_HEIGHT_ADDR
 		sta wtmp						; store
-		lda btmp
+		lda btmp2
 +		adc #>TERRAIN_HEIGHT_ADDR
 		sta wtmp+1
 
@@ -250,14 +327,8 @@ drawTerrain: .proc
 		lda hScrollValue
 		sta Vera.IO_VERA.data0
 
-
-
-;XXX; here: don't need to add 30 to hscrollPos?????
-;XXX; here: since landerXPos and drawXPos is already off by 30?
 		; get the off map fill position
 		lda hScrollPos						; get x-pos scroll byte
-;		clc
-;		adc #30								; add 30 to write in invisible column
 		and #$1f							; and to 0-31 (map size is 32)
 		asl	a								; 2 bytes per tile
 		

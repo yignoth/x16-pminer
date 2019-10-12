@@ -33,7 +33,8 @@ res/font-hud.bin: res/font-hud.png
 	$(JTOOLS)/png2Font $< 0 $@
 
 res/palette.bin: res/palette.gpl
-	$(JTOOLS)/pal2Bin $< $@
+	$(JTOOLS)/pal12Bit $< res/palette12bit.gpl
+	$(JTOOLS)/pal2Bin res/palette12bit.gpl $@
 
 res/s_lander.bin: res/s_lander.png
 	$(JTOOLS)/png2Sprite $< 4 $@
