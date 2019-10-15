@@ -80,7 +80,7 @@ curr_height			.byte		?
 vera_addr			.long		?
 
 ; landerXPos: bits (0-15) fraction, bits (16-23) are scroll value, bits (19-28) are terrain column (0-1023)
-landerXPos			.dword		?
+landerXPos			.long		?
 landerYPos			.byte		?
 landerXVel			.long		?
 ; next draw X position (offset from lander position)
@@ -165,16 +165,16 @@ u_done:
 
 		; add new divided velocity to x position
 		clc
-		lda landerXPos+1
+		lda landerXPos
 		adc landerXVel
+		sta landerXPos
+		lda landerXPos+1
+		adc landerXVel+1
 		sta landerXPos+1
 		lda landerXPos+2
-		adc landerXVel+1
-		sta landerXPos+2
-		lda landerXPos+3
 		adc landerXVel+2
 		and #$1f				; limit x-pos to max 1023 terrain columns
-		sta landerXPos+3
+		sta landerXPos+2
 
 		; check velocity direction tp set map update position drawXPos
 		stz hMoveDir
@@ -188,10 +188,10 @@ u_pos_vel:
 		lda #HDIR_RIGHT
 		sta hMoveDir
 		clc						; now add 30 (off screen area) for next map position to draw
-		lda landerXPos+2
+		lda landerXPos+1
 		adc #30<<3				; 30 bytes to right << 3 (for scroll) = 240
 		sta drawXPos
-		lda landerXPos+3
+		lda landerXPos+2
 		adc #0
 		and #$1f
 		sta drawXPos+1
@@ -200,11 +200,11 @@ u_neg_vel:
 		lda #HDIR_LEFT
 		sta hMoveDir
 		sec						; now subtract 2 for the next terrain update position
-		lda landerXPos+2
+		lda landerXPos+1
 		sbc #0<<3				; 1 byte to left << 3 (for scroll) = 8
 		sta drawXPos
 		bcc u_done
-		lda landerXPos+3
+		lda landerXPos+2
 		sbc #0
 		and #$1f
 		sta drawXPos+1
@@ -237,7 +237,6 @@ init: .proc
 		stz landerXPos			; lander initial x position
 		stz landerXPos+1
 		stz landerXPos+2
-		stz landerXPos+3
 		stz landerXVel
 		stz landerXVel+1
 		stz landerXVel+2
@@ -282,7 +281,7 @@ init: .proc
 
 drawTerrain: .proc
 		; get the scroll position which is the landerXPos 3rd byte
-		lda landerXPos+2
+		lda landerXPos+1
 		sta hScrollValue				; save intermediate 8 bit scroll value
 
 		; now find next terrain address and draw that column
