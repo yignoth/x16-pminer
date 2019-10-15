@@ -21,8 +21,10 @@ FILES=\
 ASSETS=\
 	res/font-hud.bin\
 	res/palette.bin\
-	res/s_lander.bin\
-	res/s_lander_flame.bin
+	res/s_lander2.bin\
+	res/s_lander_flame_d.bin\
+	res/s_lander_flame_r.bin\
+	res/s_lander_flame_l.bin
 
 test.prg: $(FILES) $(ASSETS)
 	64tass -Wall -C -B --line-numbers --verbose-list --tab-size=4 --m65c02 -L pminer.lst -o PMINER.PRG pminer.asm
@@ -36,8 +38,14 @@ res/palette.bin: res/palette.gpl
 	$(JTOOLS)/pal12Bit $< res/palette12bit.gpl
 	$(JTOOLS)/pal2Bin res/palette12bit.gpl $@
 
-res/s_lander.bin: res/s_lander.png
+res/s_lander2.bin: res/s_lander2.png
 	$(JTOOLS)/png2Sprite $< 4 $@
 
-res/s_lander_flame.bin: res/s_lander_flame.png
+res/s_lander_flame_d.bin: res/s_lander_flame_d.png
+	$(JTOOLS)/png2Sprite $< 4 $@
+
+res/s_lander_flame_r.bin: res/s_lander_flame_r.png
+	$(JTOOLS)/png2Sprite $< 4 $@
+
+res/s_lander_flame_l.bin: res/s_lander_flame_l.png
 	$(JTOOLS)/png2Sprite $< 4 $@

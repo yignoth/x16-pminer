@@ -14,7 +14,11 @@ L1_MAP_BASE	= $04000
 SPRITE_START = $1E000
 SPRITE_LANDER = SPRITE_START
 SPRITE_LANDER_FLAME = (SPRITE_LANDER+512)
-VERA_ENABLE_FLAME = (Vera.SPRITE_ATTS + 8 + 6)
+SPRITE_LANDER_FLAME_L = (SPRITE_LANDER_FLAME+512)
+SPRITE_LANDER_FLAME_R = (SPRITE_LANDER_FLAME_L+512)
+VERA_ENABLE_FLAME = (Vera.SPRITE_ATTS + 8*1 + 6)			; 8 bytes per sprite, 6 = enable
+VERA_ENABLE_FLAME_L = (Vera.SPRITE_ATTS + 8*2 + 6)			; 8 bytes per sprite, 6 = enable
+VERA_ENABLE_FLAME_R = (Vera.SPRITE_ATTS + 8*3 + 6)			; 8 bytes per sprite, 6 = enable
 HUD_OUT_CLR	= $8B
 HUD_TXT_CLR = $61
 HDIR_RIGHT = 1
@@ -73,6 +77,8 @@ jumpTable:
 hScrollValue		.byte		?
 hScrollPos			.byte		?
 flameEnabled		.byte		?
+flameLEnabled		.byte		?
+flameREnabled		.byte		?
 hMoveDir			.byte		?			; RIGHT=1, LEFT=2, NONE=0
 terrainHeight		.byte		?
 terrainChar			.byte		?
@@ -92,17 +98,23 @@ update: .proc
 		jsr GETJOY				; process joystick input
 		lda JOY1				; read joystick value
 		tax
+
+		stz flameEnabled		; clear flames
+		stz flameLEnabled
+		stz flameREnabled
+
 		bit #JOY_UP				; bit 3 clear means up arrow is pushed
-		bne +
+		bne u_checkMoveRight
 		lda #$08				; enable flame sprite
 		sta flameEnabled
-		bra u_checkMoveRight
-+		stz flameEnabled
 
 u_checkMoveRight:
 		txa						; check for move right
 		bit #JOY_RIGHT
 		bne u_checkMoveLeft
+
+		lda #$08
+		sta flameLEnabled		; left flame moves us right
 
 		clc
 		lda landerXVel
@@ -130,6 +142,9 @@ u_checkMoveLeft:
 		txa						; check for move left
 		bit #JOY_LEFT
 		bne u_done
+
+		lda #$08
+		sta flameREnabled		; right flame moves us left
 
 		sec
 		lda landerXVel
@@ -214,8 +229,14 @@ u_rts:
 
 render: .proc
 		; show flame sprite if enabled
-		#vaddr 1, VERA_ENABLE_FLAME
+		#vaddr 4, VERA_ENABLE_FLAME			; inc of 4 = 8 bytes
 		lda flameEnabled
+		#vpoke0A
+		;#vaddr 8, VERA_ENABLE_FLAME_L
+		lda flameLEnabled
+		#vpoke0A
+		;#vaddr 8, VERA_ENABLE_FLAME_R
+		lda flameREnabled
 		#vpoke0A
 
 		; draws the terrain at the current landerXPos and landerYPos
@@ -223,9 +244,6 @@ render: .proc
 		beq +
 		jsr drawTerrain
 +
-
-loopDone:
-renderDone:
 		rts
 .pend
 
@@ -269,6 +287,8 @@ init: .proc
 		; copy sprite data to vera
 		#Vera.copyDataToVera s_lander, SPRITE_LANDER, 512
 		#Vera.copyDataToVera s_lander_flame, SPRITE_LANDER_FLAME, 512
+		#Vera.copyDataToVera s_lander_flame_left, SPRITE_LANDER_FLAME_L, 512
+		#Vera.copyDataToVera s_lander_flame_right, SPRITE_LANDER_FLAME_R, 512
 
 		; draw initial terrain
 		jsr drawInitTerrain
@@ -472,9 +492,26 @@ drawHUD: .proc
 		#vwpoke0 64							; y = 64 above middle
 		#vpoke0 %00001000					; no-collision, zdepth=2, no-flip
 		#vpoke0 %10100010					; 32x32 sprite, pal-off=32
+
 		; setup lander_flame sprite
 		#vpoke0 ((SPRITE_LANDER_FLAME & $1fff) >> 5)	; bits 12-5 of bitmap address
 		#vpoke0 (SPRITE_LANDER_FLAME >> 13)		; 4bpp + bits 16:13 of bmap addr
+		#vwpoke0 108						; x = 108 (middle of hud window)
+		#vwpoke0 64							; y = 64 above middle
+		#vpoke0 %00000000					; no-collision, zdepth=2, no-flip
+		#vpoke0 %10100010					; 32x32 sprite, pal-off=32
+
+		; setup lander_flame sprite
+		#vpoke0 ((SPRITE_LANDER_FLAME_L & $1fff) >> 5)	; bits 12-5 of bitmap address
+		#vpoke0 (SPRITE_LANDER_FLAME_L >> 13)		; 4bpp + bits 16:13 of bmap addr
+		#vwpoke0 108						; x = 108 (middle of hud window)
+		#vwpoke0 64							; y = 64 above middle
+		#vpoke0 %00000000					; no-collision, zdepth=2, no-flip
+		#vpoke0 %10100010					; 32x32 sprite, pal-off=32
+
+		; setup lander_flame sprite
+		#vpoke0 ((SPRITE_LANDER_FLAME_R & $1fff) >> 5)	; bits 12-5 of bitmap address
+		#vpoke0 (SPRITE_LANDER_FLAME_R >> 13)		; 4bpp + bits 16:13 of bmap addr
 		#vwpoke0 108						; x = 108 (middle of hud window)
 		#vwpoke0 64							; y = 64 above middle
 		#vpoke0 %00000000					; no-collision, zdepth=2, no-flip
@@ -492,9 +529,13 @@ palette:
 font:
 .binary "res/font-hud.bin"
 s_lander:
-.binary "res/s_lander.bin"
+.binary "res/s_lander2.bin"
 s_lander_flame:
-.binary "res/s_lander_flame.bin"
+.binary "res/s_lander_flame_d.bin"
+s_lander_flame_left:
+.binary "res/s_lander_flame_l.bin"
+s_lander_flame_right:
+.binary "res/s_lander_flame_r.bin"
 .send section_DATA
 
 .bend
